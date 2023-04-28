@@ -1,4 +1,4 @@
-#### POTENTIAL ENCOUNTER RATES ########
+#### PREDATION EVENTS AND OTENTIAL ENCOUNTER EVENTS ########
 ## Author: Tiziana A. Gelmi Candusso  - tiziana.gelmicandusso@utoronto.ca
 ## uses raw output from labelled images using Timelapse
 
@@ -15,7 +15,63 @@ library(tidyverse)
 getwd()
 setwd("C:/Users/tizge/Documents/Github/cameratrap_analysis")
 
-####
+#### PREDATION EVENTS ###
+
+##clean labels
+nope <- c("squirrel (hunting)",
+          "unknown (fish or trash)" , 
+          "raccoon (interaction)", 
+          "same as before (squirrel)", 
+          "bird (not interaction)", 
+          "anthropogenic")
+nope <- c("squirrel (hunting)",
+          "unknown (fish or trash)" , 
+          "raccoon (interaction)", 
+          #"same as before (squirrel)", 
+          "bird (not interaction)", 
+          "anthropogenic")
+
+dups <- c("05210738.JPG", "05280926.JPG", "10140563.JPG", "11100083.JPG", "11100083.JPG",
+          "10260758.JPG", "10260759.JPG")
+
+pred_aa <- read.csv("predation_events.csv") %>% 
+  filter(speciesextraname != "unknown") %>%
+  #filter(!(speciesextraname %in% nope)) %>% 
+  arrange(Species, RelativePath, DateTime) %>%
+  select(File, RelativePath, DateTime, Species, speciesextraname) %>%
+  filter(!(File %in% dups)) 
+summ<- pred_aa %>% group_by(speciesextraname, Species) %>% count()
+f<- summ %>% filter(Species=='fox')
+c<-summ %>% filter(Species=='coyote')
+fc<-left_join(f,f, by='speciesextraname')
+fc$n.y[is.na(fc$n.y)] <- 0
+fc<-fc %>% select(speciesextraname, n.x, n.y)
+colnames(fc)<- c('prey', 'fox', 'coyote')
+write.csv(f, "observerd_predation_events_table_summary_fox.csv")
+
+pred <- read.csv("predation_events.csv") %>% 
+  filter(speciesextraname != "unknown") %>%
+  filter(!(speciesextraname %in% nope)) %>% 
+  arrange(Species, RelativePath, DateTime) %>%
+  select(File, RelativePath, DateTime, Species, speciesextraname) %>%
+  filter(!(File %in% dups)) 
+  #filter((speciesextraname %in% c('small mammal', 'medium size animal')))
+pred$speciesextraname <- factor(pred$speciesextraname, 
+                                levels= c("small mammal", "medium size animal", "cat", "rabbit", "raccoon", "squirrel"),  
+                                labels = c("Rodent-like", "Rabbit-like", "cat", "rabbit", "raccoon", "squirrel"))
+
+ggplot(pred, aes(x = speciesextraname)) +
+  geom_bar(aes(fill=Species),
+           colour="black", 
+           position=position_dodge()) + 
+  #facet_wrap(~Species, nrow =1) +
+  theme_classic() +
+  scale_x_discrete(name="preyed species") +
+  scale_y_continuous(name="observed events", breaks = seq(1,14, 1), limits=c(0,14)) + 
+  scale_fill_brewer(name="predator",palette = "Set2")
+
+
+###POTENTIAL ENCOUNTER EVentS
 
 ##call dataset (raw timelapse export csv)
 ##this dataset already has only fully revised sites. 
@@ -311,3 +367,38 @@ plotweb(web6$site_s)
 bipartite_D3(web6$site_s)
 Bmod1 <- computeModules(web6$site_s)
 plotModuleWeb(Bmod1)
+
+###### BIPARTITE NETWORKS ####### 
+
+### predation events 
+
+pred2 <- pred %>% select(Species, speciesextraname, RelativePath)
+pred2$site<- "site_s"
+colnames(pred2)<- c("predator","prey", "site_name", "site_s")
+pred2$predator <- factor(pred2$predator, levels = c('fox', 'coyote'), labels=c('fox (Obs)', 'coyotes (Obs)'))
+##create file for web
+web4<- frame2webs(pred2[,c(1:2,4)], varnames = c("prey", "predator", "site_s"), type.out = "list", emptylist = TRUE)
+plotweb(web4$site_s)
+bipartite_D3(web4$site_s)
+AAmod <- computeModules(web4$site_s, method="Beckett", deep = FALSE, deleteOriginalFiles = FALSE, 
+                                                       steps = 1000000, tolerance = 1e-10, experimental = FALSE, forceLPA=FALSE)
+plotModuleWeb(AAmod)
+#nestedcontribution(web4$site_s, nsimul = 99)
+
+#all in one web: comparison  predation events vs potential event webs
+out_ppe <- out_pp2 %>% filter(!(bird_feeder =='yes')) %>% select(-bird_feeder)
+pred2obs <- pred2 %>% select(-site_name)
+all<-rbind(pred2obs, out_ppe)
+fox_comp <- all %>% filter(predator %in% c('fox (Obs)', 'fox (PEE)'))
+coy_comp <- all %>% filter(predator %in% c('coyotes (Obs)', 'coyote (PEE)'))
+nrow(fox_comp %>% filter((predator=='fox (Obs)' & prey == 'rabbit')))
+par(mfrow=c(1,1))
+web10<- frame2webs(fox_comp[,c(1:3)], varnames = c( "prey", "predator","site_s"), type.out = "list", emptylist = TRUE)
+plotweb(web10$site_s, arrow='down.center')
+web10<- frame2webs(coy_comp[,c(1:3)], varnames = c( "prey", "predator","site_s"), type.out = "list", emptylist = TRUE)
+plotweb(web10$site_s, arrow='down.center')
+bipartite_D3(web10$site_s)
+AAmod <- computeModules(web10$site_s, method="Beckett", deep = FALSE, deleteOriginalFiles = FALSE, 
+                        steps = 1000000, tolerance = 1e-10, experimental = FALSE, forceLPA=FALSE)
+plotModuleWeb(AAmod)
+
